@@ -957,27 +957,62 @@ def _process_one(
         # Bone-length evidence (mask-gated): used later for skeletal proportion solve.
         allowed_idxs = None
         if pose_obs is not None and getattr(pose_obs, "landmarks", None):
+            raw_landmarks = pose_obs.landmarks
+            raw_world_landmarks = pose_obs.world_landmarks
             bones_px, bones_ratio, bones_conf, ref_bone = _compute_bone_metrics(
-                pose_obs.landmarks,
+                raw_landmarks,
                 w=w, h=h,
                 names=POSE_LANDMARK_NAMES,
                 person_bbox=crop_bbox,
                 person_mask_u8=person_mask_u8,
             )
-            pose_obs = PoseObservation(
-                landmarks=pose_obs.landmarks,
-                world_landmarks=pose_obs.world_landmarks,
-                names=pose_obs.names,
-                bones_px=bones_px,
-                bones_ratio=bones_ratio,
-                bones_conf=bones_conf,
-            )
             allowed_idxs = _allowed_pose_indices_from_bones(
-                pose_obs.landmarks,
+                raw_landmarks,
                 person_mask_u8=person_mask_u8,
                 thr=max(overlay_thr, 0.45),
                 w=w, h=h,
                 min_len_px=max(12.0, 0.02 * max(w, h)),
+            )
+
+            filtered_landmarks: list[Landmark2D] = []
+            for idx, lm in enumerate(raw_landmarks):
+                if allowed_idxs is None or idx in allowed_idxs:
+                    filtered_landmarks.append(lm)
+                else:
+                    filtered_landmarks.append(
+                        Landmark2D(
+                            x=float(getattr(lm, "x", 0.0) or 0.0),
+                            y=float(getattr(lm, "y", 0.0) or 0.0),
+                            z=getattr(lm, "z", 0.0),
+                            visibility=0.0,
+                            presence=0.0,
+                            x_px=None,
+                            y_px=None,
+                        )
+                    )
+
+            filtered_world_landmarks: list[Landmark2D] = []
+            for idx, lm in enumerate(raw_world_landmarks):
+                if allowed_idxs is None or idx in allowed_idxs:
+                    filtered_world_landmarks.append(lm)
+                else:
+                    filtered_world_landmarks.append(
+                        Landmark2D(
+                            x=float(getattr(lm, "x", 0.0) or 0.0),
+                            y=float(getattr(lm, "y", 0.0) or 0.0),
+                            z=float(getattr(lm, "z", 0.0) or 0.0),
+                        )
+                    )
+
+            pose_obs = PoseObservation(
+                landmarks=filtered_landmarks,
+                world_landmarks=filtered_world_landmarks,
+                names=pose_obs.names,
+                bones_px=bones_px,
+                bones_ratio=bones_ratio,
+                bones_conf=bones_conf,
+                raw_landmarks=raw_landmarks,
+                raw_world_landmarks=raw_world_landmarks,
             )
             pose_meta.update({
                 "bone_ref": ref_bone,
@@ -1033,10 +1068,17 @@ def _process_one(
                 keep = pose_meta.get('pose_allowed_landmarks')
                 kind = pose_meta.get('frame_kind')
                 keep_s = '?' if keep is None else str(int(keep))
-                kind_s = '' if kind is None else f" {kind}" 
+                kind_s = '' if kind is None else f" {kind}"
                 label = f"{pose_meta.get('pose_source','?')} score={pose_meta.get('pose_score',0.0):.2f} inmask={inmask_s} keep={keep_s}{kind_s}"
             ov = _draw_pose_overlay(bgr, pose_obs.landmarks, thr=overlay_thr, crop_bbox=crop_bbox, label_text=label, person_mask_u8=person_mask_u8, allowed_idxs=allowed_idxs)
             cv2.imwrite(str(overlay_path), ov)
+
+            # Raw overlay for debugging gating effects.
+            if getattr(pose_obs, "raw_landmarks", None):
+                raw_label = f"raw {label}" if label else "raw"
+                raw_overlay_path = overlay_path.with_name(f"{overlay_path.stem}_raw{overlay_path.suffix}")
+                raw_ov = _draw_pose_overlay(bgr, pose_obs.raw_landmarks, thr=overlay_thr, crop_bbox=crop_bbox, label_text=raw_label, person_mask_u8=person_mask_u8, allowed_idxs=None)
+                cv2.imwrite(str(raw_overlay_path), raw_ov)
 
         status = Status(ok=True, errors=[])
         obs = Observation(
