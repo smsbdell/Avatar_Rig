@@ -36,6 +36,9 @@ avatarrig ".\inputs\datasets\TestRun1" --out ".\outputs\runs\TestRun1" --workers
 
 `pip install -e .` installs the project in *editable* mode, so running `avatarrig` uses your local source files without needing a reinstall after each edit.
 
+### Pose profiles
+
+Use `--pose-profile strict` to raise MediaPipe's pose detection/presence/tracking thresholds. This profile favors high-precision detections when backgrounds are cluttered or when the dataset is dominated by partial-body crops, at the cost of dropping marginal poses. The default (balanced) thresholds remain accessible through manual `--min-pose-*` values or by setting `--pose-profile balanced`.
 
 ## PowerShell quick debug
 

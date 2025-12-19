@@ -22,6 +22,14 @@ def main(
     overlay_thr: float = typer.Option(0.35, "--overlay-thr", min=0.0, max=1.0, help="Min presence/visibility to draw pose landmarks in overlays."),
     crop_pad_frac: float = typer.Option(0.15, "--crop-pad-frac", min=0.0, max=0.50, help="Padding fraction applied to the segmentation bounding box before pose detection."),
     pose_model: str = typer.Option("full", "--pose-model", help="Pose model size: lite|full|heavy"),
+    pose_profile: str | None = typer.Option(
+        None,
+        "--pose-profile",
+        help=(
+            "Pose threshold preset: balanced|strict (overrides --min-pose-* thresholds). "
+            "Use strict for cluttered backgrounds or partial-body datasets."
+        ),
+    ),
     num_poses: int = typer.Option(1, "--num-poses", min=1, help="Max number of poses to detect (kept at 1 for most datasets)."),
     min_pose_det: float = typer.Option(0.30, "--min-pose-det", min=0.0, max=1.0, help="Pose detection confidence threshold."),
     min_pose_presence: float = typer.Option(0.30, "--min-pose-presence", min=0.0, max=1.0, help="Pose presence confidence threshold."),
@@ -41,7 +49,17 @@ def main(
     if pose_model_file is None:
         raise typer.BadParameter("--pose-model must be one of: lite, full, heavy")
 
+    pose_profile = pose_profile.strip().lower() if pose_profile else None
+    if pose_profile is not None:
+        if pose_profile not in MediaPipeTasksConfig.POSE_PROFILE_PRESETS:
+            raise typer.BadParameter("--pose-profile must be one of: balanced, strict")
+        thresholds = MediaPipeTasksConfig.apply_pose_profile(pose_profile)
+        min_pose_det = thresholds["min_pose_detection_confidence"]
+        min_pose_presence = thresholds["min_pose_presence_confidence"]
+        min_pose_track = thresholds["min_tracking_confidence"]
+
     mp_cfg = MediaPipeTasksConfig(
+        pose_profile=pose_profile,
         pose_model=pose_model_file,
         num_poses=num_poses,
         min_pose_detection_confidence=min_pose_det,
