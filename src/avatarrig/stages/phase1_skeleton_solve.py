@@ -134,6 +134,33 @@ def run_phase1_skeleton_solve(obs_index_path: Path, out_dir: Path) -> Path:
     ratios_by_key: dict[str, list[float]] = {}
 
     used = 0
+
+    def _current_estimate() -> tuple[dict[str, float], dict[str, dict[str, float]]]:
+        est = {k: median(vs) for k, vs in ratios_by_key.items() if len(vs) >= 50}  # require some support
+        meta = {k: {"n": len(vs), "median": median(vs)} for k, vs in ratios_by_key.items()}
+        return est, meta
+
+    def _write_outputs(est: dict[str, float], meta: dict[str, dict[str, float]]) -> Path:
+        out = {
+            "schema_version": "1.0",
+            "phase": "phase1_skeleton_solve",
+            "used_observations": used,
+            "estimates": est,
+            "stats": meta,
+            "scale_basis": "shoulder_width == 1.0 (normalized image coordinate space)",
+            "notes": [
+                "These are first-pass proportions. Noise/outliers are expected with real-world photos.",
+                "We use median aggregation across many frames to make the estimate robust.",
+            ],
+        }
+        out_path = out_dir / "skeleton_estimate.json"
+        out_path.write_text(json.dumps(out, indent=2))
+        _export_tpose_preview(est, out_dir / "skeleton_estimate.png")
+        return out_path
+
+    est, meta = _current_estimate()
+    out_path = _write_outputs(est, meta)
+
     with open(obs_index_path, "r", encoding="utf-8") as f:
         for line in f:
             row = json.loads(line)
@@ -150,25 +177,8 @@ def run_phase1_skeleton_solve(obs_index_path: Path, out_dir: Path) -> Path:
             for k, v in r.items():
                 ratios_by_key.setdefault(k, []).append(float(v))
 
-    # Median-aggregate: robust under high-noise, high-volume datasets.
-    est = {k: median(vs) for k, vs in ratios_by_key.items() if len(vs) >= 50}  # require some support
-    meta = {k: {"n": len(vs), "median": median(vs)} for k, vs in ratios_by_key.items()}
-
-    out = {
-        "schema_version": "1.0",
-        "phase": "phase1_skeleton_solve",
-        "used_observations": used,
-        "estimates": est,
-        "stats": meta,
-        "scale_basis": "shoulder_width == 1.0 (normalized image coordinate space)",
-        "notes": [
-            "These are first-pass proportions. Noise/outliers are expected with real-world photos.",
-            "We use median aggregation across many frames to make the estimate robust.",
-        ],
-    }
-    out_path = out_dir / "skeleton_estimate.json"
-    out_path.write_text(json.dumps(out, indent=2))
-    _export_tpose_preview(est, out_dir / "skeleton_estimate.png")
+            est, meta = _current_estimate()
+            out_path = _write_outputs(est, meta)
     return out_path
 
 
