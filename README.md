@@ -40,6 +40,16 @@ avatarrig ".\inputs\datasets\TestRun1" --out ".\outputs\runs\TestRun1" --workers
 
 Use `--pose-profile strict` to raise MediaPipe's pose detection/presence/tracking thresholds. This profile favors high-precision detections when backgrounds are cluttered or when the dataset is dominated by partial-body crops, at the cost of dropping marginal poses. The default (balanced) thresholds remain accessible through manual `--min-pose-*` values or by setting `--pose-profile balanced`.
 
+### Calibrate thresholds from an audit set
+
+After labeling a small audit set and running the pipeline once (with overlays/masks if helpful), aggregate the observation metrics to recommend dataset-specific thresholds. This can cut hallucinations before scaling to the full dataset.
+
+```
+python scripts/calibrate_thresholds.py outputs/runs/TestAudit --report outputs/runs/TestAudit/calibration.txt
+```
+
+The report summarizes `pose_score`, `pose_inmask_ratio`, `pose_supported_bones`, and coarse `frame_kind` counts for each run under `outputs/runs/`. It also prints suggested CLI overrides such as `--min-pose-det`, `--min-pose-presence`, `--min-pose-track`, and `--overlay-thr` that you can feed back into `avatarrig` for the next pass.
+
 ## PowerShell quick debug
 
 To sanity-check a single image in PowerShell (with venv active):
