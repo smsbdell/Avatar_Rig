@@ -20,6 +20,12 @@ class PoseObservation(BaseModel):
     world_landmarks: list[Landmark2D] = Field(default_factory=list)
     names: list[str] = Field(default_factory=list)
 
+    # Raw (ungated) outputs from the detector. Downstream consumers should
+    # prefer `landmarks`/`world_landmarks`, which may be filtered based on
+    # segmentation and bone support.
+    raw_landmarks: list[Landmark2D] = Field(default_factory=list)
+    raw_world_landmarks: list[Landmark2D] = Field(default_factory=list)
+
     # Phase 1: we are not solving animation pose; we are extracting joint evidence
     # and limb-length signals for later robust aggregation.
     bones_px: dict[str, float] = Field(default_factory=dict)
