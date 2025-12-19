@@ -35,6 +35,20 @@ SELFIE_SEG_URL_SQUARE = "https://storage.googleapis.com/mediapipe-models/image_s
 
 @dataclass(frozen=True)
 class MediaPipeTasksConfig:
+    POSE_PROFILE_PRESETS = {
+        "balanced": {
+            "min_pose_detection_confidence": 0.30,
+            "min_pose_presence_confidence": 0.30,
+            "min_tracking_confidence": 0.30,
+        },
+        "strict": {
+            "min_pose_detection_confidence": 0.60,
+            "min_pose_presence_confidence": 0.60,
+            "min_tracking_confidence": 0.60,
+        },
+    }
+
+    pose_profile: str | None = None
     pose_model: str = "pose_landmarker_full.task"
     face_model: str = "face_landmarker.task"
     seg_model: str = "selfie_segmenter.tflite"
@@ -47,6 +61,23 @@ class MediaPipeTasksConfig:
     min_pose_detection_confidence: float = 0.30
     min_pose_presence_confidence: float = 0.30
     min_tracking_confidence: float = 0.30
+
+    def __post_init__(self):
+        if self.pose_profile is None:
+            return
+        profile_key = self.pose_profile.strip().lower()
+        if profile_key not in self.POSE_PROFILE_PRESETS:
+            raise ValueError(f"Unknown pose profile '{self.pose_profile}' (expected one of: {', '.join(self.POSE_PROFILE_PRESETS)})")
+        object.__setattr__(self, "pose_profile", profile_key)
+
+    @classmethod
+    def apply_pose_profile(cls, pose_profile: str) -> dict[str, float]:
+        profile_key = pose_profile.strip().lower()
+        if profile_key not in cls.POSE_PROFILE_PRESETS:
+            raise ValueError(
+                f"Unknown pose profile '{pose_profile}' (expected one of: {', '.join(cls.POSE_PROFILE_PRESETS)})"
+            )
+        return cls.POSE_PROFILE_PRESETS[profile_key]
 
 class MediaPipeTasksBackend:
     def __init__(self, cfg: MediaPipeTasksConfig | None = None, repo_root: Path | None = None):
