@@ -5,6 +5,9 @@ import json
 import math
 from statistics import median
 
+import cv2
+import numpy as np
+
 from ..schemas.observation import Observation
 
 # Pose landmark indices (BlazePose)
@@ -165,4 +168,95 @@ def run_phase1_skeleton_solve(obs_index_path: Path, out_dir: Path) -> Path:
     }
     out_path = out_dir / "skeleton_estimate.json"
     out_path.write_text(json.dumps(out, indent=2))
+    _export_tpose_preview(est, out_dir / "skeleton_estimate.png")
     return out_path
+
+
+def _export_tpose_preview(est: dict[str, float], out_path: Path, *, size: int = 800) -> None:
+    """Render a simple T-pose visualization of the median joint rig.
+
+    The pose is normalized such that shoulder_width == 1.0; all other lengths
+    are stored as ratios in the estimate. The resulting image overwrites any
+    existing file so downstream consumers always see the latest solve.
+    """
+
+    def _seg_len(primary: float | None, fallback: float) -> float:
+        return float(primary) if primary is not None else fallback
+
+    shoulder_w = _seg_len(est.get("shoulder_width"), 1.0)
+    hip_w = _seg_len(est.get("hip_width"), 0.7) * shoulder_w
+    torso_len = _seg_len(est.get("torso_length"), 1.0) * shoulder_w
+
+    wingspan = est.get("wingspan_est")
+    def _arm_lengths(prefix: str) -> tuple[float, float]:
+        upper = est.get(f"upper_arm_{prefix}")
+        lower = est.get(f"lower_arm_{prefix}")
+        if (upper is None or lower is None) and wingspan is not None:
+            half = max(float(wingspan) - shoulder_w, 0.0) * 0.5
+            if upper is None and lower is None and half > 0.0:
+                upper = half * 0.55
+                lower = half * 0.45
+            elif upper is None and lower is not None:
+                upper = max(half - lower, lower * 0.8)
+            elif lower is None and upper is not None:
+                lower = max(half - upper, upper * 0.8)
+        return _seg_len(upper, 0.6 * shoulder_w), _seg_len(lower, 0.4 * shoulder_w)
+
+    def _leg_lengths(prefix: str) -> tuple[float, float]:
+        upper = _seg_len(est.get(f"upper_leg_{prefix}"), 1.2 * shoulder_w)
+        lower = _seg_len(est.get(f"lower_leg_{prefix}"), 1.2 * shoulder_w)
+        return upper, lower
+
+    ua_L, la_L = _arm_lengths("L")
+    ua_R, la_R = _arm_lengths("R")
+    ul_L, ll_L = _leg_lengths("L")
+    ul_R, ll_R = _leg_lengths("R")
+
+    joints = {}
+    joints["left_shoulder"] = (-0.5 * shoulder_w, 0.0)
+    joints["right_shoulder"] = (0.5 * shoulder_w, 0.0)
+    joints["left_elbow"] = (joints["left_shoulder"][0] - ua_L, 0.0)
+    joints["right_elbow"] = (joints["right_shoulder"][0] + ua_R, 0.0)
+    joints["left_wrist"] = (joints["left_elbow"][0] - la_L, 0.0)
+    joints["right_wrist"] = (joints["right_elbow"][0] + la_R, 0.0)
+
+    hip_y = torso_len
+    joints["left_hip"] = (-0.5 * hip_w, hip_y)
+    joints["right_hip"] = (0.5 * hip_w, hip_y)
+    joints["left_knee"] = (joints["left_hip"][0], hip_y + ul_L)
+    joints["right_knee"] = (joints["right_hip"][0], hip_y + ul_R)
+    joints["left_ankle"] = (joints["left_knee"][0], joints["left_knee"][1] + ll_L)
+    joints["right_ankle"] = (joints["right_knee"][0], joints["right_knee"][1] + ll_R)
+
+    pts = np.array(list(joints.values()), dtype=float)
+    min_xy = pts.min(axis=0)
+    max_xy = pts.max(axis=0)
+    center = (min_xy + max_xy) * 0.5
+    span = float(np.max(max_xy - min_xy))
+    span = span if span > 1e-3 else 1.0
+    scale = (size * 0.8) / span
+
+    def to_px(pt: tuple[float, float]) -> tuple[int, int]:
+        x, y = pt
+        px = int(round(size * 0.5 + (x - center[0]) * scale))
+        py = int(round(size * 0.5 + (y - center[1]) * scale))
+        return px, py
+
+    img = np.zeros((size, size, 3), dtype=np.uint8)
+    bones = [
+        ("left_shoulder", "right_shoulder"),
+        ("left_shoulder", "left_elbow"), ("left_elbow", "left_wrist"),
+        ("right_shoulder", "right_elbow"), ("right_elbow", "right_wrist"),
+        ("left_shoulder", "left_hip"), ("right_shoulder", "right_hip"),
+        ("left_hip", "right_hip"),
+        ("left_hip", "left_knee"), ("left_knee", "left_ankle"),
+        ("right_hip", "right_knee"), ("right_knee", "right_ankle"),
+    ]
+
+    for a, b in bones:
+        cv2.line(img, to_px(joints[a]), to_px(joints[b]), (0, 255, 255), 4, cv2.LINE_AA)
+    for p in joints.values():
+        cv2.circle(img, to_px(p), 8, (0, 165, 255), -1, lineType=cv2.LINE_AA)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(out_path), img)
