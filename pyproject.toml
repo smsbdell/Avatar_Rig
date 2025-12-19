@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "avatarrig"
+version = "0.2.0"
+description = "Avatar Rig - Phase 1: high-volume pose/face/seg observations + skeletal proportion solve"
+requires-python = ">=3.10"
+dependencies = [
+  "typer>=0.12",
+  "rich>=13.7",
+  "pydantic>=2.5",
+  "numpy>=1.23",
+  "opencv-python>=4.8",
+  "pillow>=10.0",
+  "tqdm>=4.66",
+  "mediapipe>=0.10.31",
+]
+
+[project.scripts]
+avatarrig = "avatarrig.cli:app"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
