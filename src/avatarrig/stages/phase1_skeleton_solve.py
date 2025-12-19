@@ -130,6 +130,7 @@ def _ratios_from_obs(obs: Observation) -> dict[str, float] | None:
     return out
 
 def run_phase1_skeleton_solve(obs_index_path: Path, out_dir: Path) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
     obs_dir = out_dir / "observations"
     ratios_by_key: dict[str, list[float]] = {}
 
